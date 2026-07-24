@@ -1,0 +1,9 @@
+# NUNCA enviar o link do Discord para o repositorio.
+# O repositorio e publico: qualquer pessoa na internet leria esse arquivo e
+# passaria a poder postar no canal da QUAD.
+# Na nuvem, o link vem do cofre do GitHub (Settings > Secrets > DISCORD_WEBHOOK).
+webhook.txt
+
+# Sobras do Python
+__pycache__/
+*.pyc

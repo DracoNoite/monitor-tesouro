@@ -1,0 +1,26 @@
+{
+  "_leia_isto": "Este e o UNICO arquivo que voce precisa editar. Veja o LEIA-ME.md para instrucoes.",
+
+  "banda_morta_pct": 0.5,
+
+  "alvos": [
+    {
+      "titulo": "Tesouro Renda+ Aposentadoria Extra 2050",
+      "apelido": "Renda+ 2050",
+      "tipo": "preco",
+      "metas": [500.00]
+    },
+    {
+      "titulo": "Tesouro Renda+ Aposentadoria Extra 2060",
+      "apelido": "Renda+ 2060",
+      "tipo": "preco",
+      "metas": [250.00]
+    },
+    {
+      "titulo": "Tesouro Renda+ Aposentadoria Extra 2065",
+      "apelido": "Renda+ 2065",
+      "tipo": "preco",
+      "metas": [180.00]
+    }
+  ]
+}

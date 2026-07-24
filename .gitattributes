@@ -1,0 +1,6 @@
+# O despertador do GitHub roda em Linux, mas estes arquivos sao editados no
+# Windows. Sem esta trava, o Windows gravaria a quebra de linha dele (CRLF) e o
+# script bash dentro do monitor.yml quebraria com um erro incompreensivel.
+* text=auto eol=lf
+*.yml text eol=lf
+*.py  text eol=lf

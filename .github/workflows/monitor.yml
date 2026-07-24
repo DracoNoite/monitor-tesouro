@@ -1,0 +1,67 @@
+name: Monitor Tesouro Direto
+
+# ATENCAO AO FUSO: o GitHub agenda tudo em UTC, e o Brasil e UTC-3.
+# 12:00 UTC = 09:00 em Brasilia  |  21:45 UTC = 18:45 em Brasilia
+#
+# A janela abaixo e de proposito um pouco maior que o pregao (9h30-18h). O
+# proprio monitor.py se recusa a agir fora do horario, entao as sobras apenas
+# ligam e desligam em 15 segundos. Preferi errar para o lado de nao perder a
+# ultima reprecificacao do dia.
+
+on:
+  schedule:
+    - cron: "*/15 12-21 * * 1-5"   # de 15 em 15 min, seg-sex
+  workflow_dispatch:               # botao para rodar na hora, para testar
+
+# Evita que duas execucoes se atropelem gravando o estado ao mesmo tempo.
+concurrency:
+  group: monitor-tesouro
+  cancel-in-progress: false
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # necessario para gravar de volta estado.json e historico.csv
+
+    steps:
+      - name: Baixar os arquivos do repositorio
+        uses: actions/checkout@v4
+
+      # Execucao agendada respeita o pregao (9h30-18h). Ja o clique manual usa
+      # --forcar de proposito: e assim que se testa o encanamento a qualquer
+      # hora, inclusive fim de semana. Sem isso, um teste feito as 20h sairia
+      # "fora do pregao" sem nunca chegar a falar com o site do Tesouro, e a
+      # gente nao descobriria nada.
+      - name: Rodar o monitor
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          EVENTO: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENTO" == "workflow_dispatch" ]]; then
+            echo "Execucao manual: ignorando o horario do pregao."
+            python3 monitor.py --forcar
+          else
+            python3 monitor.py
+          fi
+
+      # O GitHub apaga tudo ao fim de cada execucao. Para o programa lembrar do
+      # que ja avisou, a memoria precisa voltar para o repositorio.
+      - name: Guardar a memoria (estado e historico)
+        run: |
+          if [[ -z "$(git status --porcelain estado.json historico.csv)" ]]; then
+            echo "Nada mudou, nao ha o que guardar."
+            exit 0
+          fi
+          git config user.name  "Monitor Tesouro"
+          git config user.email "monitor@bot.local"
+          git add estado.json historico.csv
+          git commit -m "estado: $(date -u -d '-3 hours' '+%d/%m/%Y %H:%M')"
+          # Se outra execucao gravou nesse meio tempo, pega o que ela fez e tenta de novo.
+          for i in 1 2 3; do
+            git pull --rebase --autostash && git push && exit 0
+            sleep 5
+          done
+          echo "Nao consegui gravar a memoria apos 3 tentativas."
+          exit 1
