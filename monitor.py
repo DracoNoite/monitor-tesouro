@@ -338,6 +338,32 @@ def money(v):
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def data_br(iso):
+    """2069-12-15 -> 15/12/2069"""
+    if not iso or len(iso) < 10:
+        return "-"
+    a, m, d = iso[:10].split("-")
+    return f"{d}/{m}/{a}"
+
+
+def campo_prazo(nome, vencimento):
+    """
+    Explica a data do titulo sem enganar ninguem.
+
+    O Renda+ e o Educa+ nao "vencem" numa data: eles COMECAM a pagar no ano que
+    esta no nome e vao pagando em parcelas por anos. O campo maturityDate da API
+    e o FIM dos pagamentos. Mostrar '2069' num alerta chamado 'Renda+ 2050' faz
+    o leitor achar que o robo errou -- e desconfiar dos outros alertas tambem.
+    """
+    ano_no_nome = re.search(r"\b(20\d{2})\b", nome or "")
+    eh_parcelado = ("Renda+" in (nome or "")) or ("Educa+" in (nome or ""))
+
+    if eh_parcelado and ano_no_nome:
+        return ("Pagamentos",
+                f"de {ano_no_nome.group(1)} ate {data_br(vencimento)}")
+    return ("Vencimento", data_br(vencimento))
+
+
 def enviar_alerta(a, simulado=False):
     t, meta, tipo = a["titulo"], a["meta"], a["tipo"]
     apelido = a["alvo"].get("apelido") or t["nome"]
@@ -356,6 +382,11 @@ def enviar_alerta(a, simulado=False):
         destaque = (f"_Mensagem de teste do monitor. O alvo **nao** foi atingido._\n"
                     f"Preco real agora: **{money(t['preco'])}** · meta configurada: {money(meta)}")
 
+    rotulo_prazo, valor_prazo = campo_prazo(t["nome"], t["vencimento"])
+
+    bruto = t["precificado_em"] or ""
+    carimbo = f"{data_br(bruto)} as {bruto[11:16]}" if len(bruto) >= 16 else "-"
+
     embed = {
         "title": titulo_msg,
         "description": destaque,
@@ -364,10 +395,10 @@ def enviar_alerta(a, simulado=False):
             {"name": "Preco unitario", "value": money(t["preco"]), "inline": True},
             {"name": "Taxa de compra", "value": t["taxa_txt"] or "-", "inline": True},
             {"name": "Investimento minimo", "value": money(t["minimo"]), "inline": True},
-            {"name": "Vencimento", "value": t["vencimento"], "inline": True},
+            {"name": rotulo_prazo, "value": valor_prazo, "inline": True},
             {"name": "Titulo completo", "value": t["nome"], "inline": False},
         ],
-        "footer": {"text": f"Tesouro Direto · preco calculado em {(t['precificado_em'] or '-')[:16].replace('T', ' as ')}"},
+        "footer": {"text": f"Tesouro Direto · preco calculado em {carimbo}"},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     return postar_discord({"embeds": [embed]})
