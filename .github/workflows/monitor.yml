@@ -9,9 +9,17 @@ name: Monitor Tesouro Direto
 # ultima reprecificacao do dia.
 
 on:
+  # Gatilho principal: um servico de cron externo chama a API do GitHub e dispara
+  # este evento. O agendamento nativo do GitHub (schedule, abaixo) e "melhor
+  # esforco" e na pratica descartou ~94% das execucoes -- por isso ele virou
+  # apenas rede de seguranca, e nao o mecanismo principal.
+  repository_dispatch:
+    types: [verificar]
+
   schedule:
-    - cron: "*/15 12-21 * * 1-5"   # de 15 em 15 min, seg-sex
-  workflow_dispatch:               # botao para rodar na hora, para testar
+    - cron: "*/15 12-21 * * 1-5"   # rede de seguranca, se o cron externo falhar
+
+  workflow_dispatch:               # botao manual, para testar na hora
 
 # Evita que duas execucoes se atropelem gravando o estado ao mesmo tempo.
 concurrency:
