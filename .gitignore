@@ -4,6 +4,11 @@
 # Na nuvem, o link vem do cofre do GitHub (Settings > Secrets > DISCORD_WEBHOOK).
 webhook.txt
 
+# NUNCA enviar o token do GitHub para o repositorio.
+# Ele da permissao de ESCRITA neste repositorio: vazado, permite alterar o
+# codigo que roda sozinho de 15 em 15 minutos com o webhook do Discord em maos.
+token-github.txt
+
 # Sobras do Python
 __pycache__/
 *.pyc
