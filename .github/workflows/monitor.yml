@@ -20,6 +20,11 @@ on:
     - cron: "*/15 12-21 * * 1-5"   # rede de seguranca, se o cron externo falhar
 
   workflow_dispatch:               # botao manual, para testar na hora
+    inputs:
+      simular_falha:
+        description: "Forcar falha para testar se o alarme avisa"
+        type: boolean
+        default: false
 
 # Evita que duas execucoes se atropelem gravando o estado ao mesmo tempo.
 concurrency:
@@ -81,13 +86,24 @@ jobs:
       # Como o monitor roda a cada 15 minutos, um alarme ingenuo abriria dezenas
       # de issues por dia. Por isso so abre se nao houver uma aberta: a primeira
       # falha avisa, as seguintes ficam so no log ate voce fechar a issue.
+      - name: Simulacao de falha (teste do alarme)
+        if: ${{ inputs.simular_falha }}
+        run: |
+          echo "[SIMULACAO] Falha proposital para verificar o alarme."
+          exit 1
+
       - name: Abrir issue se o monitor quebrou
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DONO: ${{ github.repository_owner }}
+          SIMULADO: ${{ inputs.simular_falha }}
         run: |
-          MARCA="Monitor Tesouro parou de funcionar"
+          if [ "$SIMULADO" = "true" ]; then
+            MARCA="[SIMULACAO] Teste do alarme do monitor"
+          else
+            MARCA="Monitor Tesouro parou de funcionar"
+          fi
           ABERTA=$(gh issue list --state open --search "in:title \"$MARCA\"" \
                      --json number --jq 'length')
           if [ "$ABERTA" -gt 0 ]; then
