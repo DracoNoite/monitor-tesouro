@@ -67,4 +67,7 @@ jobs:
 
       - name: Registrar quando esta tudo bem
         if: fromJSON(steps.contar.outputs.n) >= fromJSON(steps.contar.outputs.limiar)
-        run: echo "Cron externo saudavel: ${{ steps.contar.outputs.n }} execucoes."
+        # bloco literal de proposito: um ':' seguido de espaco dentro de um
+        # escalar simples faz o YAML ler o texto como mapeamento e quebrar
+        run: |
+          echo "Cron externo saudavel: ${{ steps.contar.outputs.n }} execucoes."
