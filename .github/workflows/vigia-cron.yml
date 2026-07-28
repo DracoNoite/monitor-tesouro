@@ -7,8 +7,7 @@ name: Vigia do cron externo
 #
 # O problema: se o servico externo morrer, o monitor simplesmente roda muito
 # menos, sem erro nenhum. Nenhuma execucao falha — elas apenas deixam de
-# acontecer. Ausencia nao dispara alarme, e por isso este vigia existe: ele conta
-# quantas chegaram no dia e reclama se vierem poucas.
+# acontecer. Ausencia nao dispara alarme, e por isso este vigia existe.
 
 on:
   schedule:
@@ -16,13 +15,19 @@ on:
   workflow_dispatch:
     inputs:
       limiar:
-        description: "Minimo de execucoes esperadas no dia (padrao 20)"
+        description: "Forcar um limiar fixo (vazio = proporcional ao horario)"
         type: string
-        default: "20"
+        default: ""
 
 permissions:
   actions: read     # para contar as execucoes do monitor
   issues: write     # para avisar se estiverem faltando
+
+env:
+  # Sem checkout nao ha repositorio git na pasta, e o gh nao consegue inferir
+  # em qual repo agir. GH_REPO resolve isso para todos os comandos do job.
+  GH_REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   vigiar:
@@ -31,43 +36,69 @@ jobs:
       - name: Contar as execucoes disparadas pelo cron externo
         id: contar
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LIMIAR: ${{ inputs.limiar || '20' }}
+          LIMIAR_FIXO: ${{ inputs.limiar }}
         run: |
-          DESDE=$(date -u -d '12 hours ago' '+%Y-%m-%dT%H:%M:%SZ')
-          # A janela do pregao (12h-21h UTC) a cada 15 min daria ~40 execucoes.
-          # O limiar de 20 tolera metade de perda antes de reclamar.
+          # O pregao vai das 12h as 21h UTC e o cron dispara a cada 15 min, o
+          # que daria 36 execucoes no dia inteiro. Um limiar FIXO daria alarme
+          # falso em qualquer execucao manual no meio do dia — por isso o
+          # esperado e proporcional ao quanto da sessao ja passou.
+          HOJE=$(date -u +%Y-%m-%d)
+          ABRE=$(date -u -d "${HOJE}T12:00:00Z" +%s)
+          FECHA=$(date -u -d "${HOJE}T21:00:00Z" +%s)
+          AGORA=$(date -u +%s)
+          FIM=$AGORA; [ "$AGORA" -gt "$FECHA" ] && FIM=$FECHA
+
+          DECORRIDO=$(( FIM - ABRE ))
+          if [ "$DECORRIDO" -le 0 ]; then
+            echo "Fora da sessao — nada a julgar."
+            echo "avaliar=nao" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ESPERADO=$(( DECORRIDO / 900 ))
+          if [ -n "$LIMIAR_FIXO" ]; then
+            LIMIAR=$LIMIAR_FIXO
+          else
+            LIMIAR=$(( ESPERADO / 2 ))     # tolera perder metade antes de reclamar
+          fi
+
+          DESDE=$(date -u -d "@$ABRE" '+%Y-%m-%dT%H:%M:%SZ')
           N=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=repository_dispatch&created=>$DESDE&per_page=100" \
                 --jq '.workflow_runs | length')
-          echo "execucoes por cron externo nas ultimas 12h: $N (limiar: $LIMIAR)"
-          echo "n=$N" >> "$GITHUB_OUTPUT"
-          echo "limiar=$LIMIAR" >> "$GITHUB_OUTPUT"
+
+          echo "sessao decorrida: $(( DECORRIDO / 60 )) min | esperado ~$ESPERADO | recebido $N | limiar $LIMIAR"
+          {
+            echo "avaliar=sim"
+            echo "n=$N"
+            echo "esperado=$ESPERADO"
+            echo "limiar=$LIMIAR"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Avisar se o cron externo esta falhando
-        if: fromJSON(steps.contar.outputs.n) < fromJSON(steps.contar.outputs.limiar)
+        if: >-
+          steps.contar.outputs.avaliar == 'sim' &&
+          fromJSON(steps.contar.outputs.n) < fromJSON(steps.contar.outputs.limiar)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DONO: ${{ github.repository_owner }}
           N: ${{ steps.contar.outputs.n }}
+          ESPERADO: ${{ steps.contar.outputs.esperado }}
           LIMIAR: ${{ steps.contar.outputs.limiar }}
         run: |
           MARCA="Cron externo do monitor esta falhando"
-          ABERTA=$(gh issue list --state open --search "in:title \"$MARCA\"" \
-                     --json number --jq 'length')
+          ABERTA=$(gh issue list --state open --search "in:title \"$MARCA\"" --json number --jq 'length')
           if [ "$ABERTA" -gt 0 ]; then
             echo "Ja existe issue aberta. Nao vou duplicar."
             exit 0
           fi
-          URL=$(gh issue create \
-            --title "$MARCA ($(date -u -d '-3 hours' '+%d/%m/%Y'))" \
-            --body "$(printf '@%s\n\nHoje chegaram apenas **%s** execucoes vindas do cron externo, contra um minimo esperado de %s.\n\nO monitor nao falhou — ele simplesmente rodou menos, o que significa reprecificacoes do Tesouro passando despercebidas. Verifique o servico de cron externo.\n\nO agendamento nativo do GitHub continua como rede de seguranca, mas entrega so uma fracao das execucoes.\n' \
-                      "$DONO" "$N" "$LIMIAR")")
+          CORPO=$(printf '@%s\n\nChegaram **%s** execucoes vindas do cron externo, contra ~%s esperadas na sessao de hoje (limiar: %s).\n\nO monitor nao falhou — ele apenas rodou menos, o que significa reprecificacoes do Tesouro passando despercebidas. Verifique o servico de cron externo.\n\nO agendamento nativo do GitHub segue como rede de seguranca, mas entrega so uma fracao das execucoes.\n' \
+                   "$DONO" "$N" "$ESPERADO" "$LIMIAR")
+          URL=$(gh issue create --title "$MARCA ($(date -u -d '-3 hours' '+%d/%m/%Y'))" --body "$CORPO")
           echo "issue: $URL"
           gh issue edit "$URL" --add-assignee "$DONO" || echo "(nao consegui atribuir)"
 
       - name: Registrar quando esta tudo bem
-        if: fromJSON(steps.contar.outputs.n) >= fromJSON(steps.contar.outputs.limiar)
-        # bloco literal de proposito: um ':' seguido de espaco dentro de um
-        # escalar simples faz o YAML ler o texto como mapeamento e quebrar
+        if: >-
+          steps.contar.outputs.avaliar == 'sim' &&
+          fromJSON(steps.contar.outputs.n) >= fromJSON(steps.contar.outputs.limiar)
         run: |
-          echo "Cron externo saudavel: ${{ steps.contar.outputs.n }} execucoes."
+          echo "Cron externo saudavel - recebidas ${{ steps.contar.outputs.n }} de ~${{ steps.contar.outputs.esperado }} esperadas."
