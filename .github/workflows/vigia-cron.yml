@@ -1,0 +1,70 @@
+name: Vigia do cron externo
+
+# O monitor depende de um servico de cron EXTERNO, que chama a API do GitHub e
+# dispara o evento repository_dispatch. Esse servico e o mecanismo principal: o
+# agendamento nativo do GitHub e melhor-esforco e entrega uma fracao pequena das
+# execucoes.
+#
+# O problema: se o servico externo morrer, o monitor simplesmente roda muito
+# menos, sem erro nenhum. Nenhuma execucao falha — elas apenas deixam de
+# acontecer. Ausencia nao dispara alarme, e por isso este vigia existe: ele conta
+# quantas chegaram no dia e reclama se vierem poucas.
+
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"   # 19h30 de Brasilia, depois do fechamento
+  workflow_dispatch:
+    inputs:
+      limiar:
+        description: "Minimo de execucoes esperadas no dia (padrao 20)"
+        type: string
+        default: "20"
+
+permissions:
+  actions: read     # para contar as execucoes do monitor
+  issues: write     # para avisar se estiverem faltando
+
+jobs:
+  vigiar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contar as execucoes disparadas pelo cron externo
+        id: contar
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LIMIAR: ${{ inputs.limiar || '20' }}
+        run: |
+          DESDE=$(date -u -d '12 hours ago' '+%Y-%m-%dT%H:%M:%SZ')
+          # A janela do pregao (12h-21h UTC) a cada 15 min daria ~40 execucoes.
+          # O limiar de 20 tolera metade de perda antes de reclamar.
+          N=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=repository_dispatch&created=>$DESDE&per_page=100" \
+                --jq '.workflow_runs | length')
+          echo "execucoes por cron externo nas ultimas 12h: $N (limiar: $LIMIAR)"
+          echo "n=$N" >> "$GITHUB_OUTPUT"
+          echo "limiar=$LIMIAR" >> "$GITHUB_OUTPUT"
+
+      - name: Avisar se o cron externo esta falhando
+        if: fromJSON(steps.contar.outputs.n) < fromJSON(steps.contar.outputs.limiar)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DONO: ${{ github.repository_owner }}
+          N: ${{ steps.contar.outputs.n }}
+          LIMIAR: ${{ steps.contar.outputs.limiar }}
+        run: |
+          MARCA="Cron externo do monitor esta falhando"
+          ABERTA=$(gh issue list --state open --search "in:title \"$MARCA\"" \
+                     --json number --jq 'length')
+          if [ "$ABERTA" -gt 0 ]; then
+            echo "Ja existe issue aberta. Nao vou duplicar."
+            exit 0
+          fi
+          URL=$(gh issue create \
+            --title "$MARCA ($(date -u -d '-3 hours' '+%d/%m/%Y'))" \
+            --body "$(printf '@%s\n\nHoje chegaram apenas **%s** execucoes vindas do cron externo, contra um minimo esperado de %s.\n\nO monitor nao falhou — ele simplesmente rodou menos, o que significa reprecificacoes do Tesouro passando despercebidas. Verifique o servico de cron externo.\n\nO agendamento nativo do GitHub continua como rede de seguranca, mas entrega so uma fracao das execucoes.\n' \
+                      "$DONO" "$N" "$LIMIAR")")
+          echo "issue: $URL"
+          gh issue edit "$URL" --add-assignee "$DONO" || echo "(nao consegui atribuir)"
+
+      - name: Registrar quando esta tudo bem
+        if: fromJSON(steps.contar.outputs.n) >= fromJSON(steps.contar.outputs.limiar)
+        run: echo "Cron externo saudavel: ${{ steps.contar.outputs.n }} execucoes."

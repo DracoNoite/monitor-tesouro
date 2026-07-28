@@ -32,10 +32,11 @@ jobs:
 
     permissions:
       contents: write   # necessario para gravar de volta estado.json e historico.csv
+      issues: write     # o alarme no fim abre issue quando o monitor quebra
 
     steps:
       - name: Baixar os arquivos do repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Execucao agendada respeita o pregao (9h30-18h). Ja o clique manual usa
       # --forcar de proposito: e assim que se testa o encanamento a qualquer
@@ -73,3 +74,29 @@ jobs:
           done
           echo "Nao consegui gravar a memoria apos 3 tentativas."
           exit 1
+
+      # O Discord so recebe aviso de DENTRO do monitor.py. Se o script quebra
+      # antes disso, ninguem fica sabendo. Este passo cobre esse buraco.
+      #
+      # Como o monitor roda a cada 15 minutos, um alarme ingenuo abriria dezenas
+      # de issues por dia. Por isso so abre se nao houver uma aberta: a primeira
+      # falha avisa, as seguintes ficam so no log ate voce fechar a issue.
+      - name: Abrir issue se o monitor quebrou
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DONO: ${{ github.repository_owner }}
+        run: |
+          MARCA="Monitor Tesouro parou de funcionar"
+          ABERTA=$(gh issue list --state open --search "in:title \"$MARCA\"" \
+                     --json number --jq 'length')
+          if [ "$ABERTA" -gt 0 ]; then
+            echo "Ja existe issue aberta para esta falha. Nao vou duplicar."
+            exit 0
+          fi
+          URL=$(gh issue create \
+            --title "$MARCA ($(date -u -d '-3 hours' '+%d/%m/%Y %H:%M'))" \
+            --body "$(printf '@%s\n\nO monitor falhou e o Discord NAO foi avisado — a notificacao acontece dentro do monitor.py, entao uma quebra antes dela passa em silencio.\n\nEnquanto esta issue estiver aberta, novas falhas nao abrem issue nova (evita dezenas por dia). Feche depois de resolver.\n\nExecucao: %s/%s/actions/runs/%s\n' \
+                      "$DONO" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")")
+          echo "issue: $URL"
+          gh issue edit "$URL" --add-assignee "$DONO" || echo "(nao consegui atribuir)"
