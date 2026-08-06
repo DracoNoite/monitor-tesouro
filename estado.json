@@ -1,6 +1,8 @@
 {
   "Tesouro Renda+ Aposentadoria Extra 2065|preco|180.0": {
-    "disparado": false
+    "disparado": true,
+    "quando": "2026-08-06T12:00:32-03:00",
+    "valor": 179.42
   },
   "Tesouro Renda+ Aposentadoria Extra 2050|preco|500.0": {
     "disparado": false
