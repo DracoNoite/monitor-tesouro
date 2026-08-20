@@ -5,6 +5,10 @@ Avisa em um canal do Discord quando um título do Tesouro Direto atinge o preço
 Roda sozinho no GitHub Actions, de 15 em 15 minutos, em dias úteis das 9h30 às 18h30. Não usa nenhuma
 biblioteca externa — só a biblioteca padrão do Python — e não depende de nenhum serviço pago.
 
+> ⏸️ **Pausado desde 20/08/2026.** O monitor não roda mais sozinho e não posta no Discord.
+> Nenhum minuto do GitHub Actions é consumido enquanto estiver assim.
+> Veja [Pausar e reativar](#pausar-e-reativar) para religar.
+
 ```
 🟢 PREÇO ATINGIDO — Renda+ 2050
    R$ 498,20  ·  meta era R$ 500,00
@@ -79,6 +83,38 @@ python monitor.py --forcar         # roda ignorando o horário do pregão
 
 O modo `--simular` marca a mensagem como **[SIMULAÇÃO — NÃO É REAL]** de propósito: um alerta
 falso de "preço atingido" num canal de trabalho pode levar alguém a agir achando que é verdadeiro.
+
+---
+
+## Pausar e reativar
+
+O monitor tem duas torneiras independentes. Pausar as duas deixa o projeto inteiro em silêncio,
+sem apagar nada: metas, histórico e estado continuam onde estavam.
+
+| Torneira | Onde | O que ela corta |
+|---|---|---|
+| Gatilhos do GitHub Actions | [`.github/workflows/monitor.yml`](.github/workflows/monitor.yml) e [`vigia-cron.yml`](.github/workflows/vigia-cron.yml) | As execuções automáticas. Sem gatilho não há execução, e sem execução **o consumo de minutos é zero** |
+| Chave dos alertas | `ALERTAS_DISCORD` no [`monitor.py`](monitor.py) | Todo envio ao Discord — alerta de meta e aviso de falha — inclusive quando você roda na sua máquina |
+
+### Para reativar
+
+1. Em `monitor.py`, troque `ALERTAS_DISCORD = False` por `ALERTAS_DISCORD = True`
+2. Em `.github/workflows/monitor.yml`, descomente os blocos `repository_dispatch` e `schedule`
+3. Em `.github/workflows/vigia-cron.yml`, descomente o bloco `schedule`
+4. `git commit` e `git push` — a mudança só passa a valer depois de chegar no GitHub
+
+Os blocos comentados estão marcados com `>>> PAUSADO <<<` nos dois arquivos.
+
+### Detalhes que evitam surpresa
+
+- **O cron externo pode continuar batendo.** Sem o `repository_dispatch` declarado no workflow, a
+  chamada não cria execução nenhuma — não gasta minuto. Desligar o serviço externo é opcional.
+- **O botão manual continua funcionando.** `workflow_dispatch` ficou ativo de propósito: só roda se
+  você clicar em *Run workflow*, e nesse caso gasta os segundos daquela execução (o Discord segue
+  mudo enquanto `ALERTAS_DISCORD` for `False`).
+- **Nada de alerta perdido em silêncio.** Com a chave desligada, uma meta que bate *não* é marcada
+  como já avisada no `estado.json`. Ao religar, ela avisa — em vez de ter passado batido.
+- **Teste pontual sem religar de vez:** `ALERTAS_DISCORD=1 python monitor.py --teste-discord`
 
 ---
 

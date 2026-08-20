@@ -49,6 +49,31 @@ NAVEGADOR = (
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
+# ---------------------------------------------------------------------------
+# Chave geral dos alertas do Discord
+# ---------------------------------------------------------------------------
+# DESLIGADA EM 20/08/2026 a pedido: nada sai para o Discord -- nem alerta de
+# meta atingida, nem o aviso de que o proprio monitor quebrou. Todo o resto
+# continua funcionando (--status, leitura da API, historico.csv).
+#
+# Enquanto estiver desligada, uma meta que bate NAO e marcada como "ja avisada"
+# no estado.json. Assim, quando voce religar, o alerta que aconteceu no
+# silencio ainda chega -- em vez de ficar perdido para sempre.
+#
+# PARA REATIVAR: troque para True (e descomente os gatilhos nos workflows,
+# em .github/workflows/, se quiser que volte a rodar sozinho no GitHub).
+# Para um teste pontual sem religar de vez, rode com ALERTAS_DISCORD=1 no
+# ambiente.
+ALERTAS_DISCORD = False
+
+
+def alertas_ligados():
+    """A chave acima, com atalho pelo ambiente para testes pontuais."""
+    do_ambiente = os.environ.get("ALERTAS_DISCORD", "").strip().lower()
+    if do_ambiente:
+        return do_ambiente not in ("0", "false", "nao", "off")
+    return ALERTAS_DISCORD
+
 
 def agora_brt():
     return datetime.now(BRT)
@@ -314,6 +339,10 @@ def url_do_webhook():
 
 
 def postar_discord(payload):
+    if not alertas_ligados():
+        log("Alertas do Discord DESLIGADOS (ALERTAS_DISCORD = False). Nada foi enviado.")
+        return False
+
     url = url_do_webhook()
     if not url:
         log("AVISO: nenhum webhook do Discord configurado. Nada foi enviado.")
@@ -462,7 +491,13 @@ def main():
                 "color": 0x3498DB,
             }]
         })
-        print("Mensagem de teste enviada." if ok else "Falhou ao enviar. Confira o webhook.")
+        if ok:
+            print("Mensagem de teste enviada.")
+        elif not alertas_ligados():
+            print("Alertas desligados (ALERTAS_DISCORD = False no monitor.py).")
+            print("Para testar sem religar de vez: ALERTAS_DISCORD=1 python monitor.py --teste-discord")
+        else:
+            print("Falhou ao enviar. Confira o webhook.")
         return 0 if ok else 1
 
     config = ler_json(ARQ_METAS, {"alvos": []})
@@ -508,7 +543,13 @@ def main():
         log(f"{'SIMULACAO' if simular else 'ALERTA'}: {apelido} / meta {a['meta']}")
         enviar_alerta(a, simulado=simular)
 
-    if not simular:
+    if simular:
+        pass                      # simulacao nunca mexe na memoria
+    elif alertas and not alertas_ligados():
+        # Com os alertas desligados, gravar aqui marcaria como "ja avisado" algo
+        # que ninguem recebeu -- e ao religar o aviso nunca chegaria.
+        log("Estado NAO gravado: ha meta batida que ficou sem aviso (Discord desligado).")
+    else:
         gravar_json(ARQ_ESTADO, estado)
 
     return 0

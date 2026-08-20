@@ -8,16 +8,33 @@ name: Monitor Tesouro Direto
 # ligam e desligam em 15 segundos. Preferi errar para o lado de nao perder a
 # ultima reprecificacao do dia.
 
+# ===========================================================================
+# PAUSADO EM 20/08/2026 -- para nao consumir minutos do GitHub Actions.
+#
+# Os dois gatilhos automaticos (repository_dispatch e schedule) estao
+# comentados logo abaixo. Sem gatilho nao existe execucao: o consumo de
+# minutos e ZERO, e nada e postado no Discord. O cron externo pode continuar
+# batendo na API do GitHub -- sem o repository_dispatch declarado aqui, a
+# chamada nao cria execucao nenhuma.
+#
+# PARA REATIVAR:
+#   1. descomente os blocos "repository_dispatch" e "schedule" abaixo
+#   2. no monitor.py, volte ALERTAS_DISCORD para True
+#   3. commit + push (a mudanca so vale depois de chegar no GitHub)
+# ===========================================================================
+
 on:
   # Gatilho principal: um servico de cron externo chama a API do GitHub e dispara
   # este evento. O agendamento nativo do GitHub (schedule, abaixo) e "melhor
   # esforco" e na pratica descartou ~94% das execucoes -- por isso ele virou
   # apenas rede de seguranca, e nao o mecanismo principal.
-  repository_dispatch:
-    types: [verificar]
+  # >>> PAUSADO -- descomente as 2 linhas abaixo para reativar <<<
+  # repository_dispatch:
+  #   types: [verificar]
 
-  schedule:
-    - cron: "*/15 12-21 * * 1-5"   # rede de seguranca, se o cron externo falhar
+  # >>> PAUSADO -- descomente as 2 linhas abaixo para reativar <<<
+  # schedule:
+  #   - cron: "*/15 12-21 * * 1-5"   # rede de seguranca, se o cron externo falhar
 
   workflow_dispatch:               # botao manual, para testar na hora
     inputs:

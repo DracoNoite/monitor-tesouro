@@ -9,9 +9,20 @@ name: Vigia do cron externo
 # menos, sem erro nenhum. Nenhuma execucao falha — elas apenas deixam de
 # acontecer. Ausencia nao dispara alarme, e por isso este vigia existe.
 
+# ===========================================================================
+# PAUSADO EM 20/08/2026 -- junto com o monitor.yml.
+#
+# Este vigia so faz sentido com o monitor rodando: ele conta execucoes que
+# deveriam existir. Com o monitor pausado, ele acusaria "cron externo
+# falhando" todo dia e abriria issue a toa -- alem de gastar minutos.
+#
+# PARA REATIVAR: descomente o bloco "schedule" abaixo e faca push.
+# ===========================================================================
+
 on:
-  schedule:
-    - cron: "30 22 * * 1-5"   # 19h30 de Brasilia, depois do fechamento
+  # >>> PAUSADO -- descomente as 2 linhas abaixo para reativar <<<
+  # schedule:
+  #   - cron: "30 22 * * 1-5"   # 19h30 de Brasilia, depois do fechamento
   workflow_dispatch:
     inputs:
       limiar:
